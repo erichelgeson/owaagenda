@@ -3,36 +3,19 @@ Screen scrape a single day view of OWA calendar
 	example call
 	python agenda.py "https://mail.example.com/owa/?ae=Folder&t=IPF.Appointment" username
 """
-import sys, urllib2, urlparse, json, getpass
-from urllib2 import URLError
+import sys, json, requests, logging
 from bs4 import BeautifulSoup
 
-
-def getBaseUrl(url):
-	baseurl = urlparse.urlparse(url)
-	return "%s://%s/" % (baseurl.scheme, baseurl.netloc) 
-
 def getHtml(url, user, pwd):
-	pwdmgr = urllib2.HTTPPasswordMgrWithDefaultRealm()
-	pwdmgr.add_password(None, getBaseUrl(url), user, pwd)
-	handler = urllib2.HTTPBasicAuthHandler(pwdmgr)
 	html = None
 	try:
-		opener = urllib2.build_opener(handler)
-		request = urllib2.Request(url)
-		calendar = opener.open(request)
-		html = calendar.read()
-	except URLError, e:
-		if hasattr(e, 'reason'):
-			print 'We failed to reach a server.'
-			print 'Reason: ', e.reason
-		elif hasattr(e, 'code'):
-			print 'The server couldn\'t fulfill the request.'
-			print 'Error code: ', e.code
+		logging.debug("debug getHtml:url:" + url)
+		request = requests.get(url, auth=(user, pwd))
+		request.raise_for_status()
+		html = request.text 
+	except HTTPError, e:
+		logging.error("failed to connect to owa: " + request.status_code)
 	return html
-
-def txt_class_with_link(tag):
-	return ("class","txt") in tag.attrs.items() and tag.find("a")
 
 def scrapeAgenda(html):
 	bs = BeautifulSoup(html)
@@ -51,20 +34,9 @@ def scrapeAgenda(html):
 			agenda.append(d)
 	return agenda
 
-def textFormatter(thelist):
-	thelist = ["%s: %s - %s" % (x['time'],x['description'],x['location']) for x in thelist]
-	return "\n".join(thelist)
-
-def jsonFormatter(thelist):
-	return json.dumps(thelist)
-
-if __name__ == '__main__':
-	# better argument handling please
-	url = sys.argv[1] 
-	user = sys.argv[2] 
-	pwd = getpass.getpass("Password: ")
-	html = getHtml(url,user,pwd)
-	if html == None:
-		sys.exit(1)
-	agenda = scrapeAgenda(html)
-	print textFormatter(agenda)
+def dataFormatter(thelist, formatType="json"):
+	if(formatType=="json"):
+		return json.dumps(thelist)	
+	else:
+		thelist = ["%s: %s - %s<br>" % (x['time'],x['description'],x['location']) for x in thelist]
+        	return "\n".join(thelist)
